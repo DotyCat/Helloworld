@@ -30,19 +30,22 @@ jobs:
           git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall.git /tmp/openwrt-passwall
           git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall2.git /tmp/openwrt-passwall2
 
-      - name: Copy only luci-app-passwall and luci-app-passwall2 to push folder
+      - name: Copy only LuCI app folders to repo root
         run: |
-          mkdir -p push
+          # Remove old folders first
+          rm -rf luci-app-passwall
+          rm -rf luci-app-passwall2
 
-          rm -rf push/luci-app-passwall
-          rm -rf push/luci-app-passwall2
+          # Remove old push folder if it was committed before
+          rm -rf push
 
-          cp -a /tmp/openwrt-passwall/luci-app-passwall push/
-          cp -a /tmp/openwrt-passwall2/luci-app-passwall2 push/
+          # Copy LuCI app folders directly to repo root
+          cp -a /tmp/openwrt-passwall/luci-app-passwall .
+          cp -a /tmp/openwrt-passwall2/luci-app-passwall2 .
 
       - name: Commit and push changes
         run: |
-          git add push/luci-app-passwall push/luci-app-passwall2
+          git add -A
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
