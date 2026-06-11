@@ -92,7 +92,6 @@ jobs:
 
                   packages.append({
                       "name": pkg_name,
-                      "path": str(pkg_dir),
                       "version": pkg_version,
                       "release": pkg_release,
                   })
@@ -110,16 +109,16 @@ jobs:
           lines.append("")
           lines.append(f"Last updated: **{now}**")
           lines.append("")
-          lines.append("| No. | Package | Version | Release | Path |")
-          lines.append("| ---: | --- | --- | --- | --- |")
+          lines.append("| No. | Package | Version | Release |")
+          lines.append("| ---: | --- | --- | --- |")
 
           if packages:
               for i, pkg in enumerate(packages, 1):
                   lines.append(
-                      f"| {i} | `{pkg['name']}` | `{pkg['version']}` | `{pkg['release']}` | `{pkg['path']}` |"
+                      f"| {i} | `{pkg['name']}` | `{pkg['version']}` | `{pkg['release']}` |"
                   )
           else:
-              lines.append("| - | No packages found | - | - | - |")
+              lines.append("| - | No packages found | - | - |")
 
           lines.append("")
           lines.append(END)
