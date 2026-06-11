@@ -1,4 +1,4 @@
-name: Sync Passwall LuCI Apps
+name: Sync Passwall LuCI Apps and Packages
 
 on:
   workflow_dispatch:
@@ -25,25 +25,36 @@ jobs:
 
       - name: Clone Passwall repos
         run: |
-          rm -rf /tmp/openwrt-passwall /tmp/openwrt-passwall2
+          rm -rf /tmp/openwrt-passwall
+          rm -rf /tmp/openwrt-passwall2
+          rm -rf /tmp/openwrt-passwall-packages
 
           git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall.git /tmp/openwrt-passwall
           git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall2.git /tmp/openwrt-passwall2
+          git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git /tmp/openwrt-passwall-packages
 
-      - name: Copy only LuCI app folders to repo root
+      - name: Prepare sync folder
         run: |
-          rm -rf luci-app-passwall
-          rm -rf luci-app-passwall2
-          rm -rf push
+          rm -rf /tmp/passwall-sync
+          mkdir -p /tmp/passwall-sync
 
-          cp -a /tmp/openwrt-passwall/luci-app-passwall .
-          cp -a /tmp/openwrt-passwall2/luci-app-passwall2 .
+          # Copy all packages from openwrt-passwall-packages
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            /tmp/openwrt-passwall-packages/ /tmp/passwall-sync/
+
+          # Copy only LuCI app folders
+          rm -rf /tmp/passwall-sync/luci-app-passwall
+          rm -rf /tmp/passwall-sync/luci-app-passwall2
+
+          cp -a /tmp/openwrt-passwall/luci-app-passwall /tmp/passwall-sync/
+          cp -a /tmp/openwrt-passwall2/luci-app-passwall2 /tmp/passwall-sync/
 
       - name: Add uci-defaults fix before exit
         run: |
           python3 <<'PY'
           from pathlib import Path
-          import os
           import stat
 
           apps = [
@@ -51,8 +62,10 @@ jobs:
               ("luci-app-passwall2", "passwall2"),
           ]
 
+          base = Path("/tmp/passwall-sync")
+
           for app, service in apps:
-              uci_dir = Path(app) / "root" / "etc" / "uci-defaults"
+              uci_dir = base / app / "root" / "etc" / "uci-defaults"
               uci_dir.mkdir(parents=True, exist_ok=True)
 
               files = sorted([p for p in uci_dir.iterdir() if p.is_file()])
@@ -99,6 +112,15 @@ jobs:
               print(f"{service}: added fix to {target}")
           PY
 
+      - name: Sync to current repo
+        run: |
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            /tmp/passwall-sync/ ./
+
+          rm -rf push
+
       - name: Commit and push changes
         run: |
           git add -A
@@ -108,5 +130,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "sync: update Passwall LuCI apps"
+          git commit -m "sync: update Passwall apps and packages"
           git push origin HEAD:${GITHUB_REF_NAME}
