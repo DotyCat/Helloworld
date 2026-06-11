@@ -1,0 +1,53 @@
+name: Sync Passwall LuCI Apps
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *" # daily 02:00 Malaysia time
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set git identity
+        run: |
+          git config user.name "DotyCat"
+          git config user.email "nanaxna493@gmail.com"
+
+      - name: Clone Passwall repos
+        run: |
+          rm -rf /tmp/openwrt-passwall /tmp/openwrt-passwall2
+
+          git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall.git /tmp/openwrt-passwall
+          git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall2.git /tmp/openwrt-passwall2
+
+      - name: Copy only luci-app-passwall and luci-app-passwall2 to push folder
+        run: |
+          mkdir -p push
+
+          rm -rf push/luci-app-passwall
+          rm -rf push/luci-app-passwall2
+
+          cp -a /tmp/openwrt-passwall/luci-app-passwall push/
+          cp -a /tmp/openwrt-passwall2/luci-app-passwall2 push/
+
+      - name: Commit and push changes
+        run: |
+          git add push/luci-app-passwall push/luci-app-passwall2
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "sync: update Passwall LuCI apps"
+          git push origin HEAD:${GITHUB_REF_NAME}
