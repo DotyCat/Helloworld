@@ -32,16 +32,38 @@ jobs:
 
       - name: Copy only LuCI app folders to repo root
         run: |
-          # Remove old folders first
           rm -rf luci-app-passwall
           rm -rf luci-app-passwall2
-
-          # Remove old push folder if it was committed before
           rm -rf push
 
-          # Copy LuCI app folders directly to repo root
           cp -a /tmp/openwrt-passwall/luci-app-passwall .
           cp -a /tmp/openwrt-passwall2/luci-app-passwall2 .
+
+      - name: Add uci-defaults fix for LuCI Save & Apply
+        run: |
+          add_uci_defaults_fix() {
+            APP_DIR="$1"
+            SERVICE_NAME="$2"
+            FILE="$APP_DIR/root/etc/uci-defaults/99-${SERVICE_NAME}-ucitrack-fix"
+
+            mkdir -p "$APP_DIR/root/etc/uci-defaults"
+
+            cat > "$FILE" <<EOF
+#!/bin/sh
+
+# Ensure LuCI Save & Apply can trigger ${SERVICE_NAME} reload through ucitrack.
+# Real running state still follows ${SERVICE_NAME}.@global[0].enabled.
+[ -x /etc/init.d/${SERVICE_NAME} ] && /etc/init.d/${SERVICE_NAME} enable >/dev/null 2>&1
+[ -x /etc/init.d/ucitrack ] && /etc/init.d/ucitrack restart >/dev/null 2>&1
+
+exit 0
+EOF
+
+            chmod +x "$FILE"
+          }
+
+          add_uci_defaults_fix "luci-app-passwall" "passwall"
+          add_uci_defaults_fix "luci-app-passwall2" "passwall2"
 
       - name: Commit and push changes
         run: |
