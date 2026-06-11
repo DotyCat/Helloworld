@@ -1,0 +1,164 @@
+name: Update README Versions
+
+on:
+  workflow_dispatch:
+
+  workflow_run:
+    workflows:
+      - Sync Passwall and OpenClash LuCI Apps
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set git identity
+        run: |
+          git config user.name "DotyCat"
+          git config user.email "nanaxna493@gmail.com"
+
+      - name: Check package versions and update README.md
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import re
+
+          START = "<!-- PACKAGE_VERSION_TABLE_START -->"
+          END = "<!-- PACKAGE_VERSION_TABLE_END -->"
+
+          EXCLUDE_DIRS = {
+              ".git",
+              ".github",
+              "tmp",
+              "push",
+          }
+
+          def clean_value(value):
+              value = value.strip()
+              value = value.split("#", 1)[0].strip()
+              value = value.strip('"').strip("'")
+              return value if value else "-"
+
+          def read_makefile_var(text, name):
+              patterns = [
+                  rf"^\s*{re.escape(name)}\s*:?\=\s*(.+?)\s*$",
+                  rf"^\s*{re.escape(name)}\s*\?=\s*(.+?)\s*$",
+              ]
+
+              for pattern in patterns:
+                  match = re.search(pattern, text, re.MULTILINE)
+                  if match:
+                      return clean_value(match.group(1))
+
+              return "-"
+
+          def find_packages():
+              packages = []
+
+              for makefile in sorted(Path(".").glob("*/Makefile")):
+                  pkg_dir = makefile.parent
+
+                  if any(part in EXCLUDE_DIRS for part in pkg_dir.parts):
+                      continue
+
+                  text = makefile.read_text(errors="ignore")
+
+                  pkg_name = read_makefile_var(text, "PKG_NAME")
+                  pkg_version = read_makefile_var(text, "PKG_VERSION")
+                  pkg_release = read_makefile_var(text, "PKG_RELEASE")
+                  pkg_source_date = read_makefile_var(text, "PKG_SOURCE_DATE")
+                  pkg_source_version = read_makefile_var(text, "PKG_SOURCE_VERSION")
+
+                  if pkg_name == "-":
+                      pkg_name = pkg_dir.name
+
+                  if pkg_version == "-" and pkg_source_date != "-":
+                      pkg_version = pkg_source_date
+
+                  if pkg_version == "-" and pkg_source_version != "-":
+                      pkg_version = pkg_source_version[:12]
+
+                  packages.append({
+                      "name": pkg_name,
+                      "path": str(pkg_dir),
+                      "version": pkg_version,
+                      "release": pkg_release,
+                  })
+
+              return packages
+
+          packages = find_packages()
+
+          now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+          lines = []
+          lines.append(START)
+          lines.append("")
+          lines.append("## Package Versions")
+          lines.append("")
+          lines.append(f"Last updated: **{now}**")
+          lines.append("")
+          lines.append("| No. | Package | Version | Release | Path |")
+          lines.append("| ---: | --- | --- | --- | --- |")
+
+          if packages:
+              for i, pkg in enumerate(packages, 1):
+                  lines.append(
+                      f"| {i} | `{pkg['name']}` | `{pkg['version']}` | `{pkg['release']}` | `{pkg['path']}` |"
+                  )
+          else:
+              lines.append("| - | No packages found | - | - | - |")
+
+          lines.append("")
+          lines.append(END)
+          lines.append("")
+
+          table = "\n".join(lines)
+
+          readme = Path("README.md")
+
+          if readme.exists():
+              old = readme.read_text(errors="ignore")
+          else:
+              old = "# Package Version List\n\n"
+
+          if START in old and END in old:
+              pattern = re.compile(
+                  re.escape(START) + r".*?" + re.escape(END),
+                  re.DOTALL,
+              )
+              new = pattern.sub(table.strip(), old)
+          else:
+              if old and not old.endswith("\n"):
+                  old += "\n"
+              new = old + "\n" + table
+
+          readme.write_text(new)
+
+          print(f"Found {len(packages)} package folders.")
+          print("README.md updated.")
+          PY
+
+      - name: Commit and push README.md
+        run: |
+          git add README.md
+
+          if git diff --cached --quiet; then
+            echo "No README changes to commit."
+            exit 0
+          fi
+
+          git commit -m "docs: update package version list"
+          git push origin HEAD:${GITHUB_REF_NAME}
