@@ -39,31 +39,65 @@ jobs:
           cp -a /tmp/openwrt-passwall/luci-app-passwall .
           cp -a /tmp/openwrt-passwall2/luci-app-passwall2 .
 
-      - name: Add uci-defaults fix for LuCI Save & Apply
+      - name: Add uci-defaults fix before exit
         run: |
-          add_uci_defaults_fix() {
-            APP_DIR="$1"
-            SERVICE_NAME="$2"
-            FILE="$APP_DIR/root/etc/uci-defaults/99-${SERVICE_NAME}-ucitrack-fix"
+          python3 <<'PY'
+          from pathlib import Path
+          import os
+          import stat
 
-            mkdir -p "$APP_DIR/root/etc/uci-defaults"
+          apps = [
+              ("luci-app-passwall", "passwall"),
+              ("luci-app-passwall2", "passwall2"),
+          ]
 
-            cat > "$FILE" <<EOF
-#!/bin/sh
+          for app, service in apps:
+              uci_dir = Path(app) / "root" / "etc" / "uci-defaults"
+              uci_dir.mkdir(parents=True, exist_ok=True)
 
-# Ensure LuCI Save & Apply can trigger ${SERVICE_NAME} reload through ucitrack.
-# Real running state still follows ${SERVICE_NAME}.@global[0].enabled.
-[ -x /etc/init.d/${SERVICE_NAME} ] && /etc/init.d/${SERVICE_NAME} enable >/dev/null 2>&1
-[ -x /etc/init.d/ucitrack ] && /etc/init.d/ucitrack restart >/dev/null 2>&1
+              files = sorted([p for p in uci_dir.iterdir() if p.is_file()])
 
-exit 0
-EOF
+              if files:
+                  target = files[0]
+              else:
+                  target = uci_dir / f"99-{service}"
+                  target.write_text("#!/bin/sh\n\nexit 0\n")
 
-            chmod +x "$FILE"
-          }
+              text = target.read_text()
 
-          add_uci_defaults_fix "luci-app-passwall" "passwall"
-          add_uci_defaults_fix "luci-app-passwall2" "passwall2"
+              if f"/etc/init.d/{service} enable" in text:
+                  print(f"{service}: already added in {target}")
+                  continue
+
+              block = [
+                  f"[ -x /etc/init.d/{service} ] && /etc/init.d/{service} enable >/dev/null 2>&1",
+                  "[ -x /etc/init.d/ucitrack ] && /etc/init.d/ucitrack restart >/dev/null 2>&1",
+                  "",
+              ]
+
+              lines = text.splitlines()
+              new_lines = []
+              inserted = False
+
+              for line in lines:
+                  if line.strip() == "exit 0" and not inserted:
+                      new_lines.extend(block)
+                      inserted = True
+                  new_lines.append(line)
+
+              if not inserted:
+                  if new_lines and new_lines[-1] != "":
+                      new_lines.append("")
+                  new_lines.extend(block)
+                  new_lines.append("exit 0")
+
+              target.write_text("\n".join(new_lines) + "\n")
+
+              mode = target.stat().st_mode
+              target.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+              print(f"{service}: added fix to {target}")
+          PY
 
       - name: Commit and push changes
         run: |
