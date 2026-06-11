@@ -1,4 +1,4 @@
-name: Sync Passwall LuCI Apps and Packages
+name: Sync pkg
 
 on:
   workflow_dispatch:
@@ -23,15 +23,17 @@ jobs:
           git config user.name "DotyCat"
           git config user.email "nanaxna493@gmail.com"
 
-      - name: Clone Passwall repos
+      - name: Clone source repos
         run: |
           rm -rf /tmp/openwrt-passwall
           rm -rf /tmp/openwrt-passwall2
           rm -rf /tmp/openwrt-passwall-packages
+          rm -rf /tmp/OpenClash
 
           git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall.git /tmp/openwrt-passwall
           git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall2.git /tmp/openwrt-passwall2
           git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git /tmp/openwrt-passwall-packages
+          git clone --depth=1 https://github.com/vernesong/OpenClash.git /tmp/OpenClash
 
       - name: Prepare sync folder
         run: |
@@ -47,9 +49,11 @@ jobs:
           # Copy only LuCI app folders
           rm -rf /tmp/passwall-sync/luci-app-passwall
           rm -rf /tmp/passwall-sync/luci-app-passwall2
+          rm -rf /tmp/passwall-sync/luci-app-openclash
 
           cp -a /tmp/openwrt-passwall/luci-app-passwall /tmp/passwall-sync/
           cp -a /tmp/openwrt-passwall2/luci-app-passwall2 /tmp/passwall-sync/
+          cp -a /tmp/OpenClash/luci-app-openclash /tmp/passwall-sync/
 
       - name: Add uci-defaults fix before exit
         run: |
@@ -130,5 +134,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "sync: update Passwall apps and packages"
+          git commit -m "sync: update Passwall and OpenClash packages"
           git push origin HEAD:${GITHUB_REF_NAME}
