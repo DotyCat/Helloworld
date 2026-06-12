@@ -40,13 +40,11 @@ jobs:
           rm -rf /tmp/passwall-sync
           mkdir -p /tmp/passwall-sync
 
-          # Copy all packages from openwrt-passwall-packages
           rsync -a \
             --exclude='.git' \
             --exclude='.github' \
             /tmp/openwrt-passwall-packages/ /tmp/passwall-sync/
 
-          # Copy only LuCI app folders
           rm -rf /tmp/passwall-sync/luci-app-passwall
           rm -rf /tmp/passwall-sync/luci-app-passwall2
           rm -rf /tmp/passwall-sync/luci-app-openclash
@@ -55,37 +53,55 @@ jobs:
           cp -a /tmp/openwrt-passwall2/luci-app-passwall2 /tmp/passwall-sync/
           cp -a /tmp/OpenClash/luci-app-openclash /tmp/passwall-sync/
 
-      - name: Add uci-defaults fix before exit
+      - name: Apply PassWall patches
+        run: |
+          PATCH_DIR="${GITHUB_WORKSPACE}/.github/patches/passwall"
+
+          if [ ! -d "$PATCH_DIR" ]; then
+            echo "No PassWall patch folder found: $PATCH_DIR"
+            exit 0
+          fi
+
+          cd /tmp/passwall-sync
+
+          for patch in "$PATCH_DIR"/*.patch; do
+            [ -f "$patch" ] || continue
+
+            echo "Checking patch: $(basename "$patch")"
+            git apply --check "$patch"
+
+            echo "Applying patch: $(basename "$patch")"
+            git apply --whitespace=fix "$patch"
+          done
+
+          echo "All PassWall patches applied."
+
+      - name: Add PassWall uci-defaults fix before exit
         run: |
           python3 <<'PY'
           from pathlib import Path
           import stat
 
-          apps = [
-              ("luci-app-passwall", "passwall"),
-              ("luci-app-passwall2", "passwall2"),
-          ]
+          app = "luci-app-passwall"
+          service = "passwall"
 
           base = Path("/tmp/passwall-sync")
+          uci_dir = base / app / "root" / "etc" / "uci-defaults"
+          uci_dir.mkdir(parents=True, exist_ok=True)
 
-          for app, service in apps:
-              uci_dir = base / app / "root" / "etc" / "uci-defaults"
-              uci_dir.mkdir(parents=True, exist_ok=True)
+          files = sorted([p for p in uci_dir.iterdir() if p.is_file()])
 
-              files = sorted([p for p in uci_dir.iterdir() if p.is_file()])
+          if files:
+              target = files[0]
+          else:
+              target = uci_dir / f"99-{service}"
+              target.write_text("#!/bin/sh\n\nexit 0\n")
 
-              if files:
-                  target = files[0]
-              else:
-                  target = uci_dir / f"99-{service}"
-                  target.write_text("#!/bin/sh\n\nexit 0\n")
+          text = target.read_text(encoding="utf-8", errors="ignore")
 
-              text = target.read_text()
-
-              if f"/etc/init.d/{service} enable" in text:
-                  print(f"{service}: already added in {target}")
-                  continue
-
+          if f"/etc/init.d/{service} enable" in text:
+              print(f"{service}: already added in {target}")
+          else:
               block = [
                   f"[ -x /etc/init.d/{service} ] && /etc/init.d/{service} enable >/dev/null 2>&1",
                   "[ -x /etc/init.d/ucitrack ] && /etc/init.d/ucitrack restart >/dev/null 2>&1",
@@ -108,7 +124,7 @@ jobs:
                   new_lines.extend(block)
                   new_lines.append("exit 0")
 
-              target.write_text("\n".join(new_lines) + "\n")
+              target.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
               mode = target.stat().st_mode
               target.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -134,5 +150,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "sync: update Passwall and OpenClash packages"
+          git commit -m "sync: update PassWall and OpenClash packages"
           git push origin HEAD:${GITHUB_REF_NAME}
