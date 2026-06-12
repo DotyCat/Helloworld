@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   sync:
@@ -53,28 +54,9 @@ jobs:
           cp -a /tmp/openwrt-passwall2/luci-app-passwall2 /tmp/passwall-sync/
           cp -a /tmp/OpenClash/luci-app-openclash /tmp/passwall-sync/
 
-      - name: Apply PassWall patches
+      - name: Apply PassWall IPv6 leak guard patch
         run: |
-          PATCH_DIR="${GITHUB_WORKSPACE}/.github/patches/passwall"
-
-          if [ ! -d "$PATCH_DIR" ]; then
-            echo "No PassWall patch folder found: $PATCH_DIR"
-            exit 0
-          fi
-
-          cd /tmp/passwall-sync
-
-          for patch in "$PATCH_DIR"/*.patch; do
-            [ -f "$patch" ] || continue
-
-            echo "Checking patch: $(basename "$patch")"
-            git apply --check "$patch"
-
-            echo "Applying patch: $(basename "$patch")"
-            git apply --whitespace=fix "$patch"
-          done
-
-          echo "All PassWall patches applied."
+          python3 .github/patches/passwall/apply-ipv6-leak-guard.py
 
       - name: Add PassWall uci-defaults fix before exit
         run: |
@@ -95,7 +77,7 @@ jobs:
               target = files[0]
           else:
               target = uci_dir / f"99-{service}"
-              target.write_text("#!/bin/sh\n\nexit 0\n")
+              target.write_text("#!/bin/sh\n\nexit 0\n", encoding="utf-8")
 
           text = target.read_text(encoding="utf-8", errors="ignore")
 
@@ -152,3 +134,11 @@ jobs:
 
           git commit -m "sync: update PassWall and OpenClash packages"
           git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Trigger start workflow
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Triggering start.yml on ref: ${GITHUB_REF_NAME}"
+          gh workflow run start.yml --ref "${GITHUB_REF_NAME}"
