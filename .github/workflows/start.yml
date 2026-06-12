@@ -5,12 +5,13 @@ on:
 
   workflow_run:
     workflows:
-      - Sync Passwall and OpenClash LuCI Apps
+      - Sync pkg
     types:
       - completed
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   update-readme:
@@ -161,3 +162,11 @@ jobs:
 
           git commit -m "docs: update package version list"
           git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Trigger clean workflow
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Triggering clean.yml on ref: ${GITHUB_REF_NAME}"
+          gh workflow run clean.yml --ref "${GITHUB_REF_NAME}"
