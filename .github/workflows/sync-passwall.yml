@@ -54,64 +54,76 @@ jobs:
           cp -a /tmp/openwrt-passwall2/luci-app-passwall2 /tmp/passwall-sync/
           cp -a /tmp/OpenClash/luci-app-openclash /tmp/passwall-sync/
 
-      - name: Apply PassWall IPv6 leak guard patch
+      - name: Apply IPv6 leak guard patch to PassWall only
         run: |
           python3 .github/patches/passwall/apply-ipv6-leak-guard.py
 
-      - name: Add PassWall uci-defaults fix before exit
+      - name: Add uci-defaults fix to PassWall and PassWall2
         run: |
           python3 <<'PY'
           from pathlib import Path
           import stat
 
-          app = "luci-app-passwall"
-          service = "passwall"
+          apps = [
+              {
+                  "app": "luci-app-passwall",
+                  "service": "passwall",
+                  "uci_file": "luci-passwall",
+              },
+              {
+                  "app": "luci-app-passwall2",
+                  "service": "passwall2",
+                  "uci_file": "luci-passwall2",
+              },
+          ]
 
           base = Path("/tmp/passwall-sync")
-          uci_dir = base / app / "root" / "etc" / "uci-defaults"
-          uci_dir.mkdir(parents=True, exist_ok=True)
 
-          files = sorted([p for p in uci_dir.iterdir() if p.is_file()])
+          for item in apps:
+              app = item["app"]
+              service = item["service"]
+              uci_file = item["uci_file"]
 
-          if files:
-              target = files[0]
-          else:
-              target = uci_dir / f"99-{service}"
-              target.write_text("#!/bin/sh\n\nexit 0\n", encoding="utf-8")
+              target = base / app / "root" / "etc" / "uci-defaults" / uci_file
+              target.parent.mkdir(parents=True, exist_ok=True)
 
-          text = target.read_text(encoding="utf-8", errors="ignore")
+              if not target.exists():
+                  target.write_text("#!/bin/sh\n\nexit 0\n", encoding="utf-8")
 
-          if f"/etc/init.d/{service} enable" in text:
-              print(f"{service}: already added in {target}")
-          else:
-              block = [
-                  f"[ -x /etc/init.d/{service} ] && /etc/init.d/{service} enable >/dev/null 2>&1",
-                  "[ -x /etc/init.d/ucitrack ] && /etc/init.d/ucitrack restart >/dev/null 2>&1",
-                  "",
-              ]
+              text = target.read_text(encoding="utf-8", errors="ignore")
 
-              lines = text.splitlines()
-              new_lines = []
-              inserted = False
+              block_exists = f"/etc/init.d/{service} enable" in text
 
-              for line in lines:
-                  if line.strip() == "exit 0" and not inserted:
+              if block_exists:
+                  print(f"{service}: already added in {target}")
+              else:
+                  block = [
+                      f"[ -x /etc/init.d/{service} ] && /etc/init.d/{service} enable >/dev/null 2>&1",
+                      "[ -x /etc/init.d/ucitrack ] && /etc/init.d/ucitrack restart >/dev/null 2>&1",
+                      "",
+                  ]
+
+                  lines = text.splitlines()
+                  new_lines = []
+                  inserted = False
+
+                  for line in lines:
+                      if line.strip() == "exit 0" and not inserted:
+                          new_lines.extend(block)
+                          inserted = True
+                      new_lines.append(line)
+
+                  if not inserted:
+                      if new_lines and new_lines[-1] != "":
+                          new_lines.append("")
                       new_lines.extend(block)
-                      inserted = True
-                  new_lines.append(line)
+                      new_lines.append("exit 0")
 
-              if not inserted:
-                  if new_lines and new_lines[-1] != "":
-                      new_lines.append("")
-                  new_lines.extend(block)
-                  new_lines.append("exit 0")
-
-              target.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+                  target.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+                  print(f"{service}: added fix to {target}")
 
               mode = target.stat().st_mode
               target.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-              print(f"{service}: added fix to {target}")
           PY
 
       - name: Sync to current repo
