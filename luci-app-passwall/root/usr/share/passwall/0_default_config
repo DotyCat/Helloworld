@@ -44,6 +44,7 @@ config global_forwarding
 	option prefer_nft '1'
 	option tcp_proxy_way 'redirect'
 	option ipv6_tproxy '0'
+	option ipv6_leak_protect '1'
 
 config global_xray
 	option sniffing_override_dest '0'

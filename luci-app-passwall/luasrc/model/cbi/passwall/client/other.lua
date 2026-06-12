@@ -155,6 +155,17 @@ if (mods:find("REDIRECT") and mods:find("TPROXY")) or (mods:find("nft_redir") an
 	end
 end
 
+
+---- IPv6 Leak Guard
+o = s:option(Flag, "ipv6_leak_protect", translate("Block IPv6 Leak"),
+	translate("When IPv6 TProxy is disabled, block direct IPv6 traffic to avoid ISP IPv6 leak. Disable this only if your node supports IPv6 and you enable IPv6 TProxy."))
+o.default = "1"
+o.rmempty = false
+o:depends("ipv6_tproxy", "0")
+o.remove = function(self, section)
+	-- Do not delete while hidden
+end
+
 o = s:option(Flag, "accept_icmp", translate("Hijacking ICMP (PING)"))
 o.default = 0
 

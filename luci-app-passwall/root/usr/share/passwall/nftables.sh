@@ -1200,6 +1200,17 @@ add_firewall_rule() {
 		ip -6 route add local ::/0 dev lo table 999
 	}
 
+
+	# IPv6 leak guard: when node/VPS has no IPv6 and IPv6 TProxy is disabled,
+	# block direct IPv6 so clients do not leak ISP/telco IPv6.
+	[ "$PROXY_IPV6" != "1" ] && [ "$(config_t_get global_forwarding ipv6_leak_protect 1)" = "1" ] && {
+		nft "add rule $NFTABLE_NAME mangle_prerouting meta nfproto ipv6 ip6 daddr @$NFTSET_LAN6 counter return comment \"IPV6_LEAK_GUARD_LAN_RETURN\""
+		nft "add rule $NFTABLE_NAME mangle_prerouting meta nfproto ipv6 counter drop comment \"IPV6_LEAK_GUARD_DROP\""
+		nft "add rule $NFTABLE_NAME mangle_output meta nfproto ipv6 ip6 daddr @$NFTSET_LAN6 counter return comment \"IPV6_LEAK_GUARD_OUTPUT_LAN_RETURN\""
+		nft "add rule $NFTABLE_NAME mangle_output meta nfproto ipv6 counter drop comment \"IPV6_LEAK_GUARD_OUTPUT_DROP\""
+		echolog "  - IPv6 leak guard enabled: direct IPv6 blocked because IPv6 TProxy is disabled"
+	}
+
 	[ "$TCP_UDP" = "1" ] && [ -z "$UDP_NODE" ] && UDP_NODE=$TCP_NODE
 
 	[ "$ENABLED_DEFAULT_ACL" == 1 ] && {

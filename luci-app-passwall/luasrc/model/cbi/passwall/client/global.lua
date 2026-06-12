@@ -254,7 +254,8 @@ o:depends("direct_dns_mode", "udp")
 o:depends("direct_dns_mode", "tcp")
 
 o = s:taboption("DNS", Flag, "filter_proxy_ipv6", translate("Filter Proxy Host IPv6"))
-o.default = "0"
+o.default = "1"
+o.rmempty = false
 
 -- TCP分流时dns过滤模式保存逻辑
 function dns_mode_save(section)

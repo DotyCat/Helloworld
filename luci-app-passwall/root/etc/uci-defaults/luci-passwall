@@ -47,6 +47,8 @@ chmod +x /usr/share/passwall/*.sh
 [ "$(uci -q get passwall.@global_xray[0].sniffing)" == "1" ] && [ "$(uci -q get passwall.@global_xray[0].route_only)" != "1" ] && uci -q set passwall.@global_xray[0].sniffing_override_dest=1
 uci -q delete passwall.@global_xray[0].sniffing
 uci -q delete passwall.@global_xray[0].route_only
+uci -q set passwall.@global[0].filter_proxy_ipv6='1'
+uci -q set passwall.@global_forwarding[0].ipv6_leak_protect='1'
 uci -q commit passwall
 
 sed -i "s#add_from#group#g" /etc/config/passwall 2>/dev/null
