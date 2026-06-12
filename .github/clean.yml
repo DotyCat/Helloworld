@@ -1,0 +1,68 @@
+name: Clean Workflow Runs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  clean-workflow-runs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete completed workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          echo "Repository: $REPO"
+          echo "Current clean run ID: $CURRENT_RUN_ID"
+          echo "Deleting completed workflow runs..."
+
+          total_deleted=0
+
+          while true; do
+            mapfile -t run_ids < <(
+              gh run list \
+                --repo "$REPO" \
+                --limit 100 \
+                --status completed \
+                --json databaseId \
+                --jq '.[].databaseId'
+            )
+
+            if [ "${#run_ids[@]}" -eq 0 ]; then
+              echo "No completed workflow runs found."
+              break
+            fi
+
+            deleted_this_round=0
+
+            for run_id in "${run_ids[@]}"; do
+              if [ "$run_id" = "$CURRENT_RUN_ID" ]; then
+                echo "Skip current run: $run_id"
+                continue
+              fi
+
+              echo "Deleting workflow run: $run_id"
+
+              if gh run delete "$run_id" --repo "$REPO"; then
+                total_deleted=$((total_deleted + 1))
+                deleted_this_round=$((deleted_this_round + 1))
+              else
+                echo "Failed to delete workflow run: $run_id"
+              fi
+            done
+
+            if [ "$deleted_this_round" -eq 0 ]; then
+              break
+            fi
+          done
+
+          echo "Deleted workflow runs: $total_deleted"
+          echo "Clean completed."
